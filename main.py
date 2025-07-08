@@ -35,23 +35,54 @@ async def record_website(url: str, video_path: str = "videos"):
     os.makedirs(video_path, exist_ok=True)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context(
+        
+        # Create context without recording first
+        context = await browser.new_context(**iphone_12)
+        page = await context.new_page()
+        page.set_default_timeout(60000)
+        
+        # Navigate to the page
+        await page.goto(url)
+        
+        # Wait for the page to be fully loaded
+        await page.wait_for_load_state('networkidle')
+        
+        # Additional wait to ensure DOM is fully rendered
+        await page.wait_for_function('document.readyState === "complete"')
+        
+        # Wait a bit more for any dynamic content to load
+        await asyncio.sleep(2)
+        
+        # Now start recording by creating a new context with recording
+        await context.close()
+        recording_context = await browser.new_context(
             **iphone_12,
             record_video_dir=video_path,
             record_video_size={"width": 390, "height": 844}
         )
-        page = await context.new_page()
-        page.set_default_timeout(60000)
-        await page.goto(url)
+        recording_page = await recording_context.new_page()
+        recording_page.set_default_timeout(60000)
+        
+        # Navigate to the same page in the recording context
+        await recording_page.goto(url)
+        
+        # Wait for the page to be fully loaded again
+        await recording_page.wait_for_load_state('networkidle')
+        await recording_page.wait_for_function('document.readyState === "complete"')
         await asyncio.sleep(2)
-        await scroll_to_bottom(page)
+        
+        # Now scroll to record the content
+        await scroll_to_bottom(recording_page)
         await asyncio.sleep(1)
-        video_path_webm = await page.video.path()
-        await context.close()
+        
+        video_path_webm = await recording_page.video.path()
+        await recording_context.close()
+        
         # Check file exists and is not empty
         if not os.path.exists(video_path_webm) or os.path.getsize(video_path_webm) == 0:
             print(f"Video file {video_path_webm} does not exist or is empty.")
             return None
+            
         # Convert .webm to .mp4
         video_path_mp4 = video_path_webm.replace(".webm", ".mp4")
         ffmpeg.input(video_path_webm).output(
@@ -61,6 +92,12 @@ async def record_website(url: str, video_path: str = "videos"):
             crf=23
         ).run(overwrite_output=True)
         print(f"Converted video saved to: {video_path_mp4}")
+        
+        # Delete original .webm file after converting
+        if os.path.exists(video_path_webm):
+            os.remove(video_path_webm)
+            print(f"Deleted original .webm file: {video_path_webm}")
+
         return video_path_mp4
  
 async def main():
