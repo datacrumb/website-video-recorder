@@ -64,12 +64,9 @@ async def record_website(url: str, video_path: str = "videos"):
         recording_page.set_default_timeout(60000)
         
         # Navigate to the same page in the recording context
-        await recording_page.goto(url)
-        
-        # Wait for the page to be fully loaded again
-        await recording_page.wait_for_load_state('networkidle')
-        await recording_page.wait_for_function('document.readyState === "complete"')
-        await asyncio.sleep(2)
+        await recording_page.goto(url, wait_until='domcontentloaded')
+        await recording_page.wait_for_function('document.readyState === "complete"', timeout=5000)
+        await asyncio.sleep(3.5)
         
         # Now scroll to record the content
         await scroll_to_bottom(recording_page)
@@ -98,7 +95,18 @@ async def record_website(url: str, video_path: str = "videos"):
             os.remove(video_path_webm)
             print(f"Deleted original .webm file: {video_path_webm}")
 
-        return video_path_mp4
+        # Trim first 2 seconds from .mp4
+        trimmed_video_path = video_path_mp4.replace(".mp4", "_trimmed.mp4")
+        ffmpeg.input(video_path_mp4, ss=4).output(
+            trimmed_video_path,
+            c='copy'  # no re-encoding, fast
+        ).run(overwrite_output=True)
+
+        # delete original mp4 if not needed
+        if os.path.exists(video_path_mp4):
+            os.remove(video_path_mp4)
+
+        return trimmed_video_path
  
 async def main():
     sheets = Sheets()
