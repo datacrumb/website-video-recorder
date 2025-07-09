@@ -1,11 +1,16 @@
 import asyncio
 
-async def scroll_to_bottom(page, step=200, delay=0.1, max_attempts=50):
-    attempts = 0
-    while attempts < max_attempts:
+async def scroll_to_bottom(page, total_duration=28, step=200):
+    """
+    Smoothly scrolls to the bottom of the page over total_duration seconds.
+    If the bottom is reached early, waits at the bottom for the remaining time.
+    """
+    start = asyncio.get_event_loop().time()
+    elapsed = 0
+    interval = 0.5  # seconds between scrolls
+    while elapsed < total_duration:
         reached_bottom = await page.evaluate('''(step) => {
             function getScrollableElement() {
-                // Get all elements with scrollable overflow
                 const elements = Array.from(document.querySelectorAll('*')).filter(el => {
                     const style = window.getComputedStyle(el);
                     return (
@@ -13,7 +18,6 @@ async def scroll_to_bottom(page, step=200, delay=0.1, max_attempts=50):
                         el.scrollHeight > el.clientHeight
                     );
                 });
-                // Return the largest one, or document.scrollingElement as fallback
                 if (elements.length === 0) return document.scrollingElement || document.documentElement;
                 return elements.reduce((a, b) => (a.scrollHeight > b.scrollHeight ? a : b));
             }
@@ -23,10 +27,12 @@ async def scroll_to_bottom(page, step=200, delay=0.1, max_attempts=50):
             el.scrollBy({ top: step, behavior: 'smooth' });
             return false;
         }''', step)
+        await asyncio.sleep(interval)
+        elapsed = asyncio.get_event_loop().time() - start
         if reached_bottom:
+            # Wait at the bottom for the rest of the duration
+            remaining = total_duration - elapsed
+            if remaining > 0:
+                await asyncio.sleep(remaining)
             break
-        attempts += 1
-        await asyncio.sleep(delay)
-    # If the page is very short, just wait a bit
-    if attempts == 0:
-        await asyncio.sleep(2)
+    print(f"Scroll completed in {elapsed:.2f} seconds (including wait at bottom if any)")

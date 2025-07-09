@@ -17,6 +17,13 @@ async def record_website(url: str, video_path: str = "videos"):
         "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"
     }
     os.makedirs(video_path, exist_ok=True)
+    
+    # We want the final video to be 30 seconds, after trimming the first 2 seconds
+    trim_seconds = 2
+    final_duration = 30
+    total_record_duration = trim_seconds + final_duration  # 32 seconds
+    scroll_duration = total_record_duration - 1  # 31 seconds for scrolling, 1s at footer
+    
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
         
@@ -50,11 +57,12 @@ async def record_website(url: str, video_path: str = "videos"):
         # Navigate to the same page in the recording context
         await recording_page.goto(url, wait_until='domcontentloaded')
         await recording_page.wait_for_function('document.readyState === "complete"')
-        await asyncio.sleep(4)
         
-        # Now scroll to record the content
-        await scroll_to_bottom(recording_page)
-        await asyncio.sleep(1)
+        # Start scrolling for most of the video duration
+        print("Starting scroll to bottom...")
+        await scroll_to_bottom(recording_page, total_duration=scroll_duration)
+        print("Scroll completed, waiting at footer if needed...")
+        # Wait at the bottom for the rest of the 32 seconds if needed (handled by scroll_to_bottom)
         
         video_path_webm = await recording_page.video.path()
         await recording_context.close()
@@ -79,16 +87,24 @@ async def record_website(url: str, video_path: str = "videos"):
             os.remove(video_path_webm)
             print(f"Deleted original .webm file: {video_path_webm}")
         
-        # Trim first 4 seconds from .mp4 and save as website_name_trimmed.mp4
-        trimmed_video_path = os.path.join(video_path, f"{website_name}.mp4")
-        ffmpeg.input(video_path_mp4, ss=4).output(
-            trimmed_video_path,
-            c='copy'  # no re-encoding, fast
+        # Trim the first 2 seconds and keep 30 seconds for the final video
+        final_video_path = os.path.join(video_path, f"{website_name}.mp4")
+        ffmpeg.input(video_path_mp4, ss=trim_seconds).output(
+            final_video_path,
+            t=final_duration,
+            vcodec='libx264',
+            preset='fast',
+            crf=23
         ).run(overwrite_output=True)
         
-        # delete original mp4 if not needed
+        # Clean up untrimmed video
         if os.path.exists(video_path_mp4):
             os.remove(video_path_mp4)
         
-        return trimmed_video_path, website_name
+        # Verify final video duration
+        final_probe = ffmpeg.probe(final_video_path)
+        final_duration_actual = float(final_probe['format']['duration'])
+        print(f"Final video duration: {final_duration_actual:.2f} seconds")
+        
+        return final_video_path, website_name
  
