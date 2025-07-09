@@ -81,7 +81,7 @@ async def record_website(url: str, video_path: str = "videos"):
         
         # Trim first 4 seconds from .mp4 and save as website_name_trimmed.mp4
         trimmed_video_path = os.path.join(video_path, f"{website_name}.mp4")
-        ffmpeg.input(video_path_mp4, ss=7).output(
+        ffmpeg.input(video_path_mp4, ss=4).output(
             trimmed_video_path,
             c='copy'  # no re-encoding, fast
         ).run(overwrite_output=True)
