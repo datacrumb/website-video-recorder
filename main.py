@@ -19,14 +19,16 @@ async def main():
             continue
         print(f"Processing row {idx}: {url}")
         try:
-            video_path, website_name = await record_website(url)
+            video_path, website_name_or_msg = await record_website(url)
             if video_path: # Only upload if video was recorded
                 drive_url = upload_file_to_drive(video_path, folder_id=drive_folder_id)
                 # Update: website name in col 2, link in col 3
-                sheets.update_website_info(idx, website_name, drive_url)
-                print(f"Appended website name and video link to sheet: {website_name}, {drive_url}")
+                sheets.update_website_info(idx, website_name_or_msg, drive_url)
+                print(f"Appended website name and video link to sheet: {website_name_or_msg}, {drive_url}")
             else:
-                print(f"Skipped video recording for row {idx}: {url}")
+                # If video_path is None, website_name_or_msg is the error/message
+                sheets.update_website_info(idx, website_name_or_msg, website_name_or_msg)
+                print(f"Marked row {idx} as invalid/expired: {website_name_or_msg}")
         except Exception as e:
             print(f"Error processing row {idx} ({url}): {e}")
             continue

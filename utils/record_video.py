@@ -32,17 +32,47 @@ async def record_website(url: str, video_path: str = "videos"):
         page = await context.new_page()
         page.set_default_timeout(60000)
         
-        # Navigate to the page
-        await page.goto(url)
+        # Try to navigate and extract page content
+        try:
+            await page.goto(url)
+            await page.wait_for_load_state('networkidle')
+            await page.wait_for_function('document.readyState === "complete"')
+            await asyncio.sleep(2)
+            page_text = await page.inner_text('body')
+        except Exception as e:
+            msg = f"Site not reachable (network error or DNS failure). Skipping video."
+            print(f"{msg} ({url}) Exception: {e}")
+            return None, msg
         
-        # Wait for the page to be fully loaded
-        await page.wait_for_load_state('networkidle')
-        
-        # Additional wait to ensure DOM is fully rendered
-        await page.wait_for_function('document.readyState === "complete"')
-        
-        # Wait a bit more for any dynamic content to load
-        await asyncio.sleep(2)
+        # Check for invalid/expired/parked domain or unreachable site phrases
+        unreachable_phrases = [
+            "This site can’t be reached",
+            "server IP address could not be found",
+            "DNS_PROBE_FINISHED_NXDOMAIN",
+            "Check if there is a typo",
+            "Windows Network Diagnostics"
+        ]
+        invalid_phrases = [
+            "domain isn't connected",
+            "Looks like this domain isn't",
+            "expired domain",
+            "Wix.com",
+            "This domain is expired",
+            "not been registered",
+            "is parked",
+            "404 Not Found",
+            "Site Not Found",
+            "No webpage was found"
+        ]
+        lower_text = page_text.lower()
+        if any(phrase.lower() in lower_text for phrase in unreachable_phrases):
+            msg = "Site not reachable: This site can’t be reached / DNS_PROBE_FINISHED_NXDOMAIN. Skipping video."
+            print(f"{msg} ({url})")
+            return None, msg
+        if any(phrase.lower() in lower_text for phrase in invalid_phrases):
+            msg = "Invalid or expired domain detected. Skipping video."
+            print(f"{msg} ({url})")
+            return None, msg
         
         # Now start recording by creating a new context with recording
         await context.close()
